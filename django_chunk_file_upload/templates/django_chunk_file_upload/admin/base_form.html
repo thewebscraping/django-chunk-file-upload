@@ -1,0 +1,44 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls admin_modify %}
+{% block extrahead %}
+    {{ block.super }}
+    <script src="{% url 'admin:jsi18n' %}"></script>
+    <style>
+    .btn-delete {
+      margin-left: auto;
+    }
+    .btn-upload {
+      display: none !important;
+    }
+    </style>
+{% endblock %}
+{% block submit_buttons_bottom %}
+    <div class="submit-row">
+        {% if change and has_change_permission or has_add_permission and add or has_editable_inline_admin_formsets %}
+            <button type="submit"
+                    class="btn btn-primary"
+                    name="{% block submit_button %}_save{% endblock %}">
+                <span>Save</span>
+            </button>
+        {% endif %}
+        {% if change and has_delete_permission %}
+            <button type="submit" class="btn btn-danger btn-delete" name="_delete">
+                <svg xmlns="http://www.w3.org/2000/svg"
+                     width="16"
+                     height="16"
+                     fill="currentColor"
+                     class="bi bi-trash-fill"
+                     viewBox="0 0 16 16">
+                    <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0">
+                    </path>
+                </svg>
+                <span>{% translate 'Delete' %}</span>
+            </button>
+        {% endif %}
+    </div>
+    <script>
+    $(document).ready(function () {
+      new ChunkUploaded("{% url 'django_chunk_file_upload:uploads' %}").init();
+    });
+    </script>
+{% endblock %}

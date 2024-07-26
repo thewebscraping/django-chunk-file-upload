@@ -1,0 +1,6 @@
+include AUTHORS
+include LICENSE
+include README.md
+include ChangeLog.rst
+recursive-include django_chunk_file_upload *.html *.txt *.xml *.po *.mo *.css *.js
+recursive-include docs Makefile conf.py *.rst
