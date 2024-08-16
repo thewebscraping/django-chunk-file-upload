@@ -9,9 +9,8 @@ from .models import FileManager
 @admin.register(FileManager)
 class FileManagerModelAdmin(admin.ModelAdmin):
     form = ChunkedUploadFileAdminForm
-    search_fields = ("name",)
     list_display = (
-        "name",
+        "id",
         "status",
         "created_at",
         "updated_at",
