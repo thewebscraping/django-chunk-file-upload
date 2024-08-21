@@ -351,8 +351,8 @@ button:hover {
 
 .dropzone-wrapper .preview .preview-file .preview-image {
   object-fit: cover;
-  width: 60px;
-  height: 60px;
+  width: 90px;
+  height: 90px;
   border: 1px solid #dbdfea;
   border-radius: .36rem;
 }
@@ -383,13 +383,29 @@ button:hover {
 .dropzone-wrapper .preview-file .file-item .file-info {
   display: inline-flex;
   justify-content: space-between;
-  align-items: baseline;
   margin-top: .36rem;
 }
 
 .dropzone-wrapper .preview-file .file-item .file-info .info, .preview-file .file-item .file-info .info .title {
   font-size: 1rem !important;
   color: #212529 !important;
+}
+
+.dropzone-wrapper .preview-file .file-item .file-info .actions {
+  display: inline-flex;
+  margin-left: 1rem;
+}
+
+.dropzone-wrapper .preview-file .file-item .file-info .actions .viewed a {
+  color: #0d6efd !important;
+}
+
+.dropzone-wrapper .preview-file .file-item .file-info .actions .removed a {
+  color: #dc3545 !important;
+}
+
+.dropzone-wrapper .preview-file .file-item .file-info .actions a {
+  margin-left: .36rem;
 }
 
 .dropzone-wrapper .preview-file .file-item .file-info i {

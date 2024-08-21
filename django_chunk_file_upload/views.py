@@ -2,68 +2,181 @@ from __future__ import annotations
 
 from django.db import IntegrityError
 from django.db.models import ManyToManyField, QuerySet
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic.edit import FormView
 
 from .app_settings import app_settings
+from .constants import ActionChoices
 from .forms import ChunkedUploadFileForm
 from .models import FileManager
-from .typed import FileMetadata, StatusChoices
-from .utils import get_md5_checksum, safe_remove_file
+from .typed import (
+    ArchiveFile,
+    AudioFile,
+    BinaryFile,
+    DocumentFile,
+    File,
+    FontFile,
+    HyperTextFile,
+    ImageFile,
+    JSONFile,
+    MicrosoftExcelFile,
+    MicrosoftPowerPointFile,
+    MicrosoftWordFile,
+    SeparatedFile,
+    XMLFile,
+)
+from .utils import get_md5_checksum
 
 
 class ChunkedUploadView(FormView):
     """Chunked upload view."""
 
-    allowed_methods = ("POST",)
-    template_name = "django_chunk_file_upload/chunked_upload.html"
-    form_class = ChunkedUploadFileForm
+    http_method_names = ["get", "post", "delete"]
     chunk_size = app_settings.chunk_size
+    file_class = File
+    file_status = app_settings.status
+    form_class = ChunkedUploadFileForm
+    optimize = app_settings.optimize
+    permission_classes = app_settings.permission_classes
+    remove_file_on_update = app_settings.remove_file_on_update
+    template_name = "django_chunk_file_upload/chunked_upload.html"
     upload_to = app_settings.upload_to
 
+    def check_object_permissions(self, request):
+        for permission in self.permission_classes:
+            permission = permission() if isinstance(permission, type) else permission
+            if permission.has_permission(request, self):
+                return True
+        return False
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return self.check_object_permissions(request)
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self.check_object_permissions(request)
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self.check_object_permissions(request)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return self.check_object_permissions(request)
+
+    def get_model(self):
+        return self.form_class.Meta.model
+
+    def get_instance(self):
+        opts = dict(
+            user=self.request.user if self.request.user.is_authenticated else None
+        )
+        pk = self.request.headers.get("x-file-id")
+        if pk:
+            opts["pk"] = pk
+            return self.get_model().objects.filter(**opts).first()
+
+        if self.request.headers.get("x-file-checksum"):
+            opts["checksum"] = self.request.headers["x-file-checksum"]
+            return self.get_model().objects.filter(**opts).first()
+
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        context = super(ChunkedUploadView, self).get_context_data(**kwargs)
         context["chunk_size"] = self.chunk_size
         return context
 
+    def get(self, request, *args, **kwargs):
+        return self._get(request, *args, **kwargs)
+
     def post(self, request, *args, **kwargs):
-        """Override post method from FormView."""
+        """Override POST method from View."""
 
-        file_obj = FileMetadata.from_request(self.request, self.upload_to)
+        action = request.POST.get("action")
+        if action == ActionChoices.UPDATE:
+            return self._update(request, *args, **kwargs)
+        return self._post(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        """Override DELETE method from View."""
+
+        form, file_obj = self._get_form_file(request, *args, **kwargs)
+        if self.has_delete_permission(request):
+            instance = self.get_instance()
+            if instance and (
+                self.request.user.is_superuser or self.request.user == instance.user
+            ):
+                self._delete(instance)
+                file_obj.message = _("The file deleted successfully.")
+                return self.ajax_response(None, file_obj, status=200, save=False)
+
+        file_obj.message = _("Permission denied.")
+        return self.ajax_response(None, file_obj, status=400, save=False)
+
+    def _get(self, request, *args, **kwargs):
+        if self.has_view_permission(request):
+            return super(ChunkedUploadView, self).get(request, *args, **kwargs)
+        raise Http404
+
+    def _post(self, request, *args, **kwargs):
+        form, file_obj = self._get_form_file(request, *args, **kwargs)
+        if (
+            self.has_add_permission(self.request)
+            and file_obj.is_valid()
+            and form.is_valid()
+        ):
+            instance = self.get_instance()
+            return self.chunked_upload(instance, form, file_obj)
+
+        file_obj.message = _("Permission denied.")
+        return self.ajax_response(None, file_obj, status=400, save=False)
+
+    def _update(self, request, *args, **kwargs):
+        form, file_obj = self._get_form_file(request, *args, **kwargs)
+        if self.has_change_permission(self.request):
+            instance = self.get_instance()
+            if instance:
+                if self.remove_file_on_update:
+                    instance.file.delete()
+                instance.eof = False
+                instance.save()
+                return self.chunked_upload(instance, form, file_obj)
+
+            file_obj.message = _("Not found.")
+            return self.ajax_response(None, file_obj, status=400, save=False)
+
+        file_obj.message = _("Permission denied.")
+        return self.ajax_response(None, file_obj, status=400, save=False)
+
+    def _delete(self, instance):
+        if instance:
+            instance.file.delete()
+            instance.delete()
+
+    def _get_form_file(
+        self, request, *args, **kwargs
+    ) -> tuple[ChunkedUploadFileForm, File]:
         form = self.get_form(self.form_class)
-        # TOTO: Implement change view with replace image on admin.
-        # action = self.request.POST.get("action", ActionChoices.ADD)
-        if file_obj.is_valid() and form.is_valid():
-            return self.chunked_upload(form, file_obj)
+        file_obj = self.file_class.from_request(self.request, self.upload_to)
+        return form, file_obj
 
-        file_obj.message = _("Invalid form.")
-        return self.ajax_response(None, file_obj, status=400, commit=False)
-
-    def chunked_upload(self, form, file_obj):
+    def chunked_upload(self, instance, form, file_obj):
         """Chunked upload file
 
         Handle requests from JQuery AJAX, save files to server.
         Check MD5 checksum of file when upload is complete, if not correct delete file from server.
 
         Args:
+            instance (FileManager): FileManager object.
             form (ChunkedUploadFileForm): Chunked upload from.
-            file_obj (FileMetadata): File metadata instance.
+            file_obj (File): File metadata instance.
 
         Returns:
             JsonResponse: return file metadata data.
         """
-
-        instance = form.Meta.model.objects.filter(checksum=file_obj.checksum).first()
-        if instance:
-            mode = "ab+"
-            if instance.eof:
-                file_obj.message = _("The file already exists.")
-                return self.ajax_response(instance, file_obj, 403, commit=False)
-
-        else:
-            mode = "wb+"
+        if not instance:
             instance = form.instance
+
+        if instance.eof:
+            file_obj.message = _("The file already exists.")
+            return self.ajax_response(instance, file_obj, 403, save=False)
 
         kwargs, m2m_kwargs = self.get_kwargs(form)
         for k, v in kwargs.items():
@@ -72,7 +185,10 @@ class ChunkedUploadView(FormView):
         try:
             self.save(instance, file_obj)
             self.save_m2m(instance, **m2m_kwargs)
-            file_obj.write(mode=mode)
+            file_obj.write("ab+" if instance.file else "wb+")
+        except IntegrityError as e:
+            return self.raise_exception(e, instance, file_obj)
+
         except Exception as e:
             return self.raise_exception(e, instance, file_obj)
 
@@ -81,36 +197,46 @@ class ChunkedUploadView(FormView):
 
         checksum = get_md5_checksum(file_obj.save_path)
         if checksum != file_obj.checksum:
-            safe_remove_file(file_obj.save_path)
+            instance.file.delete()
             instance.eof = False
             file_obj.message = _("The file does not match the MD5 checksum.")
             return self.ajax_response(instance, file_obj, 400)
 
         self.background_task(instance)
+        if self.optimize:
+            file_obj.optimize(instance)
         return self.ajax_response(instance, file_obj)
 
     def raise_exception(
-        self, exception: Exception, instance: FileManager, file_obj: FileMetadata
+        self, exception: Exception, instance: FileManager, file_obj: File
     ):
+        error = str(exception)
+        file_obj.message = error
         if isinstance(exception, IntegrityError):
-            file_obj.message = _("DB error: %s.") % str(exception)
-        else:
-            file_obj.message = str(exception)
+            file_obj.message = _("DB error: %s.") % error
+            if "UNIQUE" in error:
+                file_obj.message = _("The file was created by another user.")
+
+            return self.ajax_response(instance, file_obj, 400, False)
 
         return self.ajax_response(instance, file_obj, 400)
 
     def ajax_response(
         self,
         instance: FileManager,
-        file_obj: FileMetadata,
+        file_obj: File,
         status: int = 201,
-        commit: bool = True,
+        save: bool = True,
     ):
-        if commit:
+        if save:
             self.save(instance, file_obj)
 
+        data = file_obj.to_response()
+        if instance and instance.eof:
+            data["url"] = instance.file.url
+
         return JsonResponse(
-            data=file_obj.to_dict(),
+            data=data,
             status=status,
         )
 
@@ -121,11 +247,12 @@ class ChunkedUploadView(FormView):
             for field in form.instance._meta.get_fields()
             if isinstance(field, ManyToManyField)
         }
-        for k, v in form.cleaned_data.items():
-            if k in m2m_field:
-                m2m_kwargs[k] = v
-            else:
-                kwargs[k] = v
+        if hasattr(form, "cleaned_data"):
+            for k, v in form.cleaned_data.items():
+                if k in m2m_field:
+                    m2m_kwargs[k] = v
+                else:
+                    kwargs[k] = v
         return kwargs, m2m_kwargs
 
     def save_m2m(self, instance, **kwargs):
@@ -146,22 +273,97 @@ class ChunkedUploadView(FormView):
                 else:
                     m2m_field.clear()
 
-    def save(self, instance: FileManager, file_obj: FileMetadata):
+    def save(self, instance: FileManager, file_obj: File):
         instance.eof = file_obj.eof
         instance.file = file_obj.path
-        instance.status = (
-            StatusChoices.COMPLETED if file_obj.eof else StatusChoices.PROCESSING
-        )
+        instance.type = file_obj.type
+        instance.user = file_obj.user
+        instance.status = self.file_status
         if not instance.checksum:
             instance.checksum = file_obj.checksum
 
-        if not instance.name:
-            instance.name = file_obj.name
-
         if app_settings.is_metadata_storage:
-            instance.metadata = file_obj.to_dict()
+            instance.metadata = file_obj.to_metadata()
 
         instance.save()
 
     def background_task(self, instance):
         pass
+
+
+class ChunkArchiveUploadView(ChunkedUploadView):
+    """Chunk Archive Upload View"""
+
+    file_class = ArchiveFile
+
+
+class ChunkAudioUploadView(ChunkedUploadView):
+    """Chunk Audio Upload View"""
+
+    file_class = AudioFile
+
+
+class ChunkBinaryUploadView(ChunkedUploadView):
+    """Chunk Binary Upload View"""
+
+    file_class = BinaryFile
+
+
+class ChunkDocumentUploadView(ChunkedUploadView):
+    """Chunk Document Upload View"""
+
+    file_class = DocumentFile
+
+
+class ChunkFontUploadView(ChunkedUploadView):
+    """Chunk Font Upload View"""
+
+    file_class = FontFile
+
+
+class ChunkHyperTextUploadView(ChunkedUploadView):
+    """Chunk HyperText Upload View"""
+
+    file_class = HyperTextFile
+
+
+class ChunkImageUploadView(ChunkedUploadView):
+    """Chunk Image Upload View"""
+
+    file_class = ImageFile
+
+
+class ChunkJSONUploadView(ChunkedUploadView):
+    """Chunk JSON Upload View"""
+
+    file_class = JSONFile
+
+
+class ChunkMicrosoftWordUploadView(ChunkedUploadView):
+    """Chunk Microsoft Word Upload View"""
+
+    file_class = MicrosoftWordFile
+
+
+class ChunkMicrosoftPowerPointUploadView(ChunkedUploadView):
+    """Chunk Microsoft PowerPoint Upload View"""
+
+    file_class = MicrosoftPowerPointFile
+
+
+class ChunkMicrosoftExcelUploadView(ChunkedUploadView):
+    """Chunk Microsoft Excel Upload View"""
+
+    file_class = MicrosoftExcelFile
+
+
+class ChunkSeparatedUploadView(ChunkedUploadView):
+    """Chunk Separated Upload View"""
+
+    file_class = SeparatedFile
+
+
+class ChunkXMLUploadView(ChunkedUploadView):
+    """Chunk XML Upload View"""
+
+    file_class = XMLFile
