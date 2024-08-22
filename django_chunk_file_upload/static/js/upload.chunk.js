@@ -46,6 +46,7 @@ function uploadFile(evt, file, chunkFrom = 0, chunkSize = 2097152) {
     $.ajaxSetup({
         headers: {
             "X-CSRFToken": getDjangoCookie(),
+            "X-File-ID": getHiddenInputChecksum(),
             "X-File-Name": file.name,
             "X-File-Checksum": file.checksum,
             "X-File-Chunk-From": chunkFrom,
@@ -53,7 +54,7 @@ function uploadFile(evt, file, chunkFrom = 0, chunkSize = 2097152) {
             "X-File-Chunk-To": chunkTo,
             "X-File-EOF": isEOF,
             "X-File-Size": file.size,
-            "X-File-Mime-Type": file.type,
+            "X-File-MimeType": file.type,
         }
     });
 
@@ -80,6 +81,7 @@ function uploadFile(evt, file, chunkFrom = 0, chunkSize = 2097152) {
         contentType: false,
         data: formData,
         error: function (response) {
+            console.log(response)
             let errorMessage = response.statusText;
             if (response.responseJSON) {
                 errorMessage = response.responseJSON.message;
@@ -97,24 +99,102 @@ function uploadFile(evt, file, chunkFrom = 0, chunkSize = 2097152) {
                 uploadFile(evt, file, chunkTo, chunkSize);
             } else {
                 updateStatus(file.checksum, response.message, 'success');
+                 [...$('.file-item')].forEach((node) => {
+                    if (node.id === file.checksum) {
+                        const viewedObj = $(node).find('.viewed a');
+                        viewedObj.attr('href', response.url);
+                        viewedObj.removeClass('hide');
+                    }
+                });
             }
         }
     });
 }
 
+function deleteFile() {
+    Swal.fire({
+          title: "Are you sure?",
+          text: "You won't be able to revert this!",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonColor: "#3085d6",
+          cancelButtonColor: "#d33",
+          confirmButtonText: "Yes, delete it!"
+        }).then((result) => {
+      if (result.isConfirmed) {
+        $.ajaxSetup({
+          headers: {
+            "X-CSRFToken": getDjangoCookie(),
+            "X-File-ID": getHiddenInputChecksum(),
+          }
+        });
+        $.ajax({
+          url: uploadURL,
+          type: 'DELETE',
+          dataType: 'json',
+          cache: false,
+          processData: false,
+          contentType: false,
+          error: function (response) {
+            console.log(response)
+            let errorMessage = response.statusText;
+            if (response.responseJSON) {
+              errorMessage = response.responseJSON.message;
+            }
+            Swal.fire({
+              title: "Error!",
+              text: errorMessage,
+              icon: "error"
+            });
+          },
+          success: function () {
+            let timerInterval;
+            Swal.fire({
+              title: "Deleted!",
+              icon: "success",
+              html: "I will redirect in <b></b> milliseconds.",
+              showCloseButton: true,
+              timer: 2000,
+              timerProgressBar: true,
+              didOpen: () => {
+                Swal.showLoading();
+                const timer = Swal.getPopup().querySelector("b");
+                timerInterval = setInterval(() => {
+                  timer.textContent = `${Swal.getTimerLeft()}`;
+                }, 100);
+              },
+              willClose: () => {
+                clearInterval(timerInterval);
+              }
+            }).then((result) => {
+              if (result.dismiss === Swal.DismissReason.timer) {
+                window.location.href = document.referrer;
+              } else {
+                window.location.href = document.referrer;
+              }
+            });
+          }
+        });
+
+      }
+    });
+}
+
 function startUpload(evt) {
     preventDefaults(evt);
-    if (uploadFiles.length > 0) {
-        let submitButton = $('button[type=submit]');
-        submitButton.addClass('disabled');
-        uploadFiles.forEach((file, i) => {
-            console.log(`start upload file[${i}].name = ${file.name}`);
-            updateStatus(file.checksum, 'Starting to upload...', 'warning');
-            uploadFile(evt, file);
-        });
-        submitButton.removeClass('disabled');
+    if (evt.originalEvent.submitter.name === '_delete') {
+        deleteFile();
     } else {
-        toastr.error(`File not found.`);
+        if ($(evt.target).find(getHiddenInput()).length && uploadFiles.length > 0) {
+            let submitButton = $('button[type=submit]');
+            submitButton.addClass('disabled');
+            uploadFiles.forEach((file, i) => {
+                console.log(`start upload file[${i}].name = ${file.name}`);
+                updateStatus(file.checksum, 'Starting to upload...', 'warning');
+                uploadFile(evt, file);
+            });
+            submitButton.removeClass('disabled');
+        }
     }
 }
 
@@ -123,21 +203,26 @@ function preventDefaults(evt) {
     evt.stopPropagation();
 }
 
-function getInput() {
+function getHiddenInput() {
     return $('input[data-id=dropzone]');
 }
 
+function getHiddenInputChecksum() {
+    return getHiddenInput().attr('data-value')
+}
+
 function isMultipleFile() {
-    return !!getInput().attr('multiple');
+    return !!getHiddenInput().attr('multiple');
 }
 
 function isImageFile(file) {
     return ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type);
 }
 
+
 function openFile(evt) {
     preventDefaults(evt)
-    getInput().click();
+    getHiddenInput().click();
 }
 
 function clearFile() {
@@ -203,10 +288,22 @@ function previewFile(file) {
                             <span class="size">${formatBytes(file.size)}</span> -
                             <span class="title">${file.name}</span>
                         </div>
-                        <div class="removed text-danger" onclick="removeFile(this)">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-lg" viewBox="0 0 16 16">
-                                <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>
-                            </svg>
+                        <div class="actions">
+                            <div class="viewed">
+                                <a class="text-primary hide" href="#viewed" target="_blank">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye-fill" viewBox="0 0 16 16">
+                                        <path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0"/>
+                                        <path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8m8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7"/>
+                                    </svg>
+                                </a>
+                            </div>
+                            <div class="removed">
+                                <a class="text-danger" href="#removed" onclick="removeFile(this)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-lg" viewBox="0 0 16 16">
+                                        <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>
+                                    </svg>
+                                </a>
+                            </div>
                         </div>
                     </div>
                     <div class="progress">
@@ -417,9 +514,7 @@ $(document).ready(function () {
     });
 
     $("form").submit(function (evt) {
-        if ($(evt.target).find(getInput()).length && uploadFiles) {
-            startUpload(evt);
-        }
+        startUpload(evt);
     });
 
     $(".btn-cancel").on("click", function () {
