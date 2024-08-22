@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 
 from django.conf import settings
 
@@ -51,7 +51,7 @@ class _LazySettings(_Settings):
     status: StatusChoices = StatusChoices.PENDING
     permission_classes: tuple[BasePermission] = (IsAuthenticated,)
     optimize: bool = True
-    image_optimizer: _ImageSettings = _ImageSettings()
+    image_optimizer: _ImageSettings = field(default_factory=_ImageSettings)
 
     @classmethod
     def from_kwargs(cls, **kwargs) -> "_LazySettings":
