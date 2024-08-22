@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 from django import forms
+from django.db.models.fields.files import FieldFile, ImageField
 
 from .app_settings import app_settings
 
 
 class DragDropFileInput(forms.ClearableFileInput):
-    template_name = "django_chunk_file_upload/forms/widgets/file_input.html"
+    template_name = "django_chunk_file_upload/forms/widgets/drag_drop_input.html"
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context["widget"]["attrs"]["hidden"] = True
+        context["widget"]["attrs"]["data-id"] = "dropzone"
+        if value and isinstance(value, (FieldFile, ImageField)):
+            context["widget"]["attrs"]["data-value"] = value.instance.pk
+        return context
 
     @property
     def media(self):
