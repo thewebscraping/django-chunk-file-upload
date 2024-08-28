@@ -32,7 +32,7 @@ class FileManagerMixin(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="files",
+        related_name="%(class)s_files",
     )
     metadata = models.JSONField(default=dict)
 
