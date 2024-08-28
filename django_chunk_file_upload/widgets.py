@@ -11,6 +11,7 @@ class DragDropFileInput(forms.ClearableFileInput):
 
     def get_context(self, name, value, attrs):
         context = super().get_context(name, value, attrs)
+        context["widget"]["attrs"]["required"] = False
         context["widget"]["attrs"]["hidden"] = True
         context["widget"]["attrs"]["data-id"] = "dropzone"
         if value and isinstance(value, (FieldFile, ImageField)):

@@ -136,7 +136,6 @@ function deleteFile() {
           processData: false,
           contentType: false,
           error: function (response) {
-            console.log(response)
             let errorMessage = response.statusText;
             if (response.responseJSON) {
               errorMessage = response.responseJSON.message;
