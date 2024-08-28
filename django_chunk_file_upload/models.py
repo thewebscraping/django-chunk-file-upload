@@ -7,7 +7,9 @@ from django.utils.translation import gettext_lazy as _
 from .constants import StatusChoices, TypeChoices
 
 
-class FileManager(models.Model):
+class FileManagerMixin(models.Model):
+    """File Manager Mixin for Django Models"""
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     file = models.FileField()
@@ -35,8 +37,24 @@ class FileManager(models.Model):
     metadata = models.JSONField(default=dict)
 
     class Meta:
+        abstract = True
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def name(self) -> str:
+        if "name" in self.metadata and self.metadata["name"]:
+            return self.metadata["name"]
+        return self.file.name
+
+
+class FileManager(FileManagerMixin):
+    """File Manager for Django Models"""
+
+    class Meta:
         db_table = "django_chunk_file_upload"
-        indexes = [models.Index(fields=["checksum"], name="file_manager_checksum_idx")]
+        indexes = [models.Index(fields=["checksum"], name="%(class)s_checksum_idx")]
         ordering = ("-created_at",)
         unique_together = (
             "user",
