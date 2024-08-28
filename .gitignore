@@ -56,3 +56,4 @@ docs/_build
 .DS_Store
 examples/.DS_Store
 examples/db.sqlite3
+examples/media/

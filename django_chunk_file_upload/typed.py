@@ -147,7 +147,7 @@ class BaseFile:
 
     @property
     def filename(self) -> str:
-        return get_filename(self.file.name)
+        return get_filename(getattr(self.file, "name", "")) or ""
 
     @property
     def repl_filename(self) -> str:
@@ -236,11 +236,10 @@ class BaseFile:
                 user = request.user
 
             file = request.FILES.get("file")
-            extension = get_file_extension(file.name)
             pk = make_uuid(user=user, checksum=request.headers.get("x-file-checksum"))
             return {
                 "_id": pk,
-                "_extension": extension,
+                "_extension": get_file_extension(file.name) if file else None,
                 "_file": file,
                 "_user": user,
                 "_upload_to": upload_to,
@@ -291,6 +290,7 @@ class BaseFile:
     def to_response(self) -> dict:
         metadata = {k: v for k, v in self.to_dict().items() if not k.startswith("_")}
         metadata["message"] = str(self.message)
+        metadata["name"] = self.filename
         return metadata
 
     def write(self, mode: str = "ab+"):

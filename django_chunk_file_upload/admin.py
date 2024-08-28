@@ -11,6 +11,7 @@ class FileManagerModelAdmin(admin.ModelAdmin):
     form = ChunkedUploadFileAdminForm
     list_display = (
         "id",
+        "name",
         "status",
         "created_at",
         "updated_at",
