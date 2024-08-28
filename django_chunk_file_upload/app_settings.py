@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field, fields
 
 from django.conf import settings
 
+from . import permissions
 from .constants import StatusChoices
-from .permissions import BasePermission, IsAuthenticated
 
 
 @dataclass(kw_only=True)
@@ -49,7 +50,9 @@ class _LazySettings(_Settings):
     is_metadata_storage: bool = False
     remove_file_on_update: bool = True
     status: StatusChoices = StatusChoices.PENDING
-    permission_classes: tuple[BasePermission] = (IsAuthenticated,)
+    permission_classes: tuple[permissions.BasePermission] = (
+        permissions.IsAuthenticated,
+    )
     optimize: bool = True
     image_optimizer: _ImageSettings = field(default_factory=_ImageSettings)
 
@@ -63,6 +66,22 @@ class _LazySettings(_Settings):
         image_optimizer = kwargs.pop("image_optimizer", {}) or {}
         if image_optimizer and isinstance(image_optimizer, dict):
             kwargs["image_optimizer"] = _ImageSettings.from_kwargs(**image_optimizer)
+
+        permission_classes = kwargs.pop("permission_classes")
+        if permission_classes and isinstance(
+            permission_classes, (tuple, list, set, str)
+        ):
+            if isinstance(permission_classes, str):
+                permission_classes = [permission_classes]
+
+            perms = []
+            for permission_class in permission_classes:
+                paths = permission_class.split(".")
+                module = importlib.import_module(".".join(paths[:-1]), "")
+                permission_class = getattr(module, paths[-1])
+                perms.append(permission_class)
+
+            kwargs["permission_classes"] = tuple(perms)
         return cls(**kwargs)
 
 

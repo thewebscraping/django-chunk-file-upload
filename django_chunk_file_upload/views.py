@@ -62,6 +62,11 @@ class ChunkedUploadView(FormView):
     def has_delete_permission(self, request, obj=None) -> bool:
         return self.check_object_permissions(request)
 
+    def is_valid(self, form, file_obj) -> bool:
+        if form.is_valid() and file_obj.is_valid():
+            return True
+        return False
+
     def get_model(self):
         return self.form_class.Meta.model
 
@@ -97,18 +102,7 @@ class ChunkedUploadView(FormView):
     def delete(self, request, *args, **kwargs):
         """Override DELETE method from View."""
 
-        form, file_obj = self._get_form_file(request, *args, **kwargs)
-        if self.has_delete_permission(request):
-            instance = self.get_instance()
-            if instance and (
-                self.request.user.is_superuser or self.request.user == instance.user
-            ):
-                self._delete(instance)
-                file_obj.message = _("The file deleted successfully.")
-                return self.ajax_response(None, file_obj, status=200, save=False)
-
-        file_obj.message = _("Permission denied.")
-        return self.ajax_response(None, file_obj, status=400, save=False)
+        return self._delete(request, *args, **kwargs)
 
     def _get(self, request, *args, **kwargs):
         if self.has_view_permission(request):
@@ -117,11 +111,7 @@ class ChunkedUploadView(FormView):
 
     def _post(self, request, *args, **kwargs):
         form, file_obj = self._get_form_file(request, *args, **kwargs)
-        if (
-            self.has_add_permission(self.request)
-            and file_obj.is_valid()
-            and form.is_valid()
-        ):
+        if self.has_add_permission(self.request) and self.is_valid(form, file_obj):
             instance = self.get_instance()
             return self.chunked_upload(instance, form, file_obj)
 
@@ -130,7 +120,7 @@ class ChunkedUploadView(FormView):
 
     def _update(self, request, *args, **kwargs):
         form, file_obj = self._get_form_file(request, *args, **kwargs)
-        if self.has_change_permission(self.request):
+        if self.has_change_permission(self.request) and self.is_valid(form, file_obj):
             instance = self.get_instance()
             if instance:
                 if self.remove_file_on_update:
@@ -145,10 +135,20 @@ class ChunkedUploadView(FormView):
         file_obj.message = _("Permission denied.")
         return self.ajax_response(None, file_obj, status=400, save=False)
 
-    def _delete(self, instance):
-        if instance:
-            instance.file.delete()
-            instance.delete()
+    def _delete(self, request, *args, **kwargs):
+        form, file_obj = self._get_form_file(request, *args, **kwargs)
+        if self.has_delete_permission(request):
+            instance = self.get_instance()
+            if instance and (
+                self.request.user.is_superuser or self.request.user == instance.user
+            ):
+                instance.file.delete()
+                instance.delete()
+                file_obj.message = _("The file deleted successfully.")
+                return self.ajax_response(None, file_obj, status=200, save=False)
+
+        file_obj.message = _("Permission denied.")
+        return self.ajax_response(None, file_obj, status=400, save=False)
 
     def _get_form_file(
         self, request, *args, **kwargs
