@@ -67,7 +67,7 @@ class _LazySettings(_Settings):
         if image_optimizer and isinstance(image_optimizer, dict):
             kwargs["image_optimizer"] = _ImageSettings.from_kwargs(**image_optimizer)
 
-        permission_classes = kwargs.pop("permission_classes")
+        permission_classes = kwargs.pop("permission_classes", None)
         if permission_classes and isinstance(
             permission_classes, (tuple, list, set, str)
         ):

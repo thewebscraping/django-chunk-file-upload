@@ -171,7 +171,7 @@ class BaseFile:
 
     @property
     def save_path(self) -> str:
-        return get_save_file_path(self.path)
+        return get_save_file_path(self.path, self._upload_to)
 
     @property
     def extension(self) -> str:
