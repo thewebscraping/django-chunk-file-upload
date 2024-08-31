@@ -29,6 +29,7 @@ class _ImageSettings(_Settings):
     max_width: int = 1280
     max_height: int = 720
     to_webp: bool = True
+    remove_origin: bool = True
 
 
 @dataclass(kw_only=True)

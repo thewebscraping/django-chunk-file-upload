@@ -12,7 +12,10 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from random import choice
+from string import ascii_letters
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -129,10 +132,31 @@ STATIC_URL = "static/"
 # MEDIA
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#media-root
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = BASE_DIR / "tests/media"
 MEDIA_URL = "/media/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# Django Chunk File Upload Config
+UPLOAD_TO_TEMP_DIR = os.path.join(
+    MEDIA_ROOT, "".join([choice(ascii_letters) for _ in range(15)])
+)
+DJANGO_CHUNK_FILE_UPLOAD = {
+    "chunk_size": 1024 * 1024 * 2,  # # custom chunk size upload (default: 2MB).
+    "upload_to": UPLOAD_TO_TEMP_DIR,
+    "is_metadata_storage": True,  # save file metadata,
+    "remove_file_on_update": True,
+    "optimize": True,
+    "image_optimizer": {
+        "quality": 82,
+        "compress_level": 9,
+        "max_width": 1280,
+        "max_height": 720,
+        "to_webp": True,  # focus convert image to webp type.
+    },
+    "permission_classes": ("django_chunk_file_upload.permissions.AllowAny",),
+}
