@@ -24,6 +24,10 @@ Install Django Chunk File Upload:
 pip install git+https://github.com/thewebscraping/django-chunk-file-upload.git
 ```
 
+Pypi:
+```shell
+pip install django-chunk-file-upload
+```
 
 Add it to your `settings.py`:
 
