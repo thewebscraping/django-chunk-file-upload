@@ -43,6 +43,13 @@ class IsAdminUser(BasePermission):
         return False
 
 
+class IsStaffUser(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        if self.is_safe_method(request, view):
+            return bool(request.user and request.user.is_staff)
+        return False
+
+
 class IsAuthenticatedOrReadOnly(BasePermission):
     def has_permission(self, request, view) -> bool:
         if self.is_safe_method(request, view):

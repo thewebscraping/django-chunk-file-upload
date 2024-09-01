@@ -49,6 +49,7 @@
                     <form action="{% url 'django_chunk_file_upload:uploads' %}"
                           method="post"
                           id="chunk-upload-form">
+                        {% csrf_token %}
                         {{ form }}
                     </form>
                 </div>

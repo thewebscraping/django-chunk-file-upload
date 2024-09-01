@@ -148,9 +148,9 @@ DJANGO_CHUNK_FILE_UPLOAD = {
     "image_optimizer": {
         "quality": 82,
         "compress_level": 9,
-        "max_width": 1024,
+        "max_width": 1280,
         "max_height": 720,
         "to_webp": True,  # focus convert image to webp type.
     },
-    "permission_classes": ("django_chunk_file_upload.permissions.AllowAny"),
+    "permission_classes": ("django_chunk_file_upload.permissions.AllowAny",),
 }
