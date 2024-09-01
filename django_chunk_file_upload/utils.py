@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from io import BytesIO
+import shutil
+from io import BufferedReader, BytesIO
 from typing import Union
 from uuid import UUID
 
@@ -25,6 +26,13 @@ def make_md5_hash(*args, **kwargs) -> str:
 
 def make_uuid(*args, **kwargs) -> UUID:
     return UUID(hex=make_md5_hash(*args, **kwargs))
+
+
+def remove_dir(dir_path: str) -> None:
+    try:
+        shutil.rmtree(dir_path)
+    except OSError:
+        pass
 
 
 def create_dir(dir_path: str) -> None:
@@ -104,7 +112,7 @@ def handle_upload_file(file, upload_dir: str = None):
 
 
 def get_md5_checksum(
-    fp: Union[str, bytes, InMemoryUploadedFile, TemporaryUploadedFile],
+    fp: Union[str, bytes, BytesIO, InMemoryUploadedFile, TemporaryUploadedFile],
     chunk_size: int = 65536,
 ) -> str:
     md5hash = hashlib.md5()
@@ -112,10 +120,15 @@ def get_md5_checksum(
         with open(fp, "rb") as fp:
             while chunk := fp.read(chunk_size):
                 md5hash.update(chunk)
-    elif isinstance(fp, bytes):
-        while chunk := BytesIO(fp).read(chunk_size):
-            md5hash.update(chunk)
-    else:
+    elif isinstance(fp, (InMemoryUploadedFile, TemporaryUploadedFile)):
         for chunk in fp.chunks(chunk_size):
             md5hash.update(chunk)
+    elif isinstance(fp, BufferedReader):
+        while chunk := fp.read(chunk_size):
+            md5hash.update(chunk)
+    else:
+        fp = BytesIO(fp) if isinstance(fp, bytes) else fp
+        with open(fp) as f:
+            while chunk := f.read(chunk_size):
+                md5hash.update(chunk)
     return md5hash.hexdigest()

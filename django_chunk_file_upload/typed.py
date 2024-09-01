@@ -16,7 +16,6 @@ from .optimize import MapOptimizer
 from .utils import (
     get_file_extension,
     get_file_path,
-    get_filename,
     get_save_file_path,
     make_uuid,
 )
@@ -146,8 +145,9 @@ class BaseFile:
         return self._file
 
     @property
-    def filename(self) -> str:
-        return get_filename(getattr(self.file, "name", "")) or ""
+    def filename(self) -> None | str:
+        if self.file:
+            return getattr(self.file, "name", None)
 
     @property
     def repl_filename(self) -> str:
@@ -175,8 +175,8 @@ class BaseFile:
 
     @property
     def extension(self) -> str:
-        if self._extension is None:
-            self._extension = get_file_extension(self.file.name)
+        if self._extension is None and self.filename:
+            self._extension = get_file_extension(self.filename)
         return self._extension
 
     @extension.setter
@@ -218,7 +218,7 @@ class BaseFile:
             X-File-Chunk-Size: Chunk size per request.
             X-File-EOF: True is upload completed, otherwise.
             X-File-Size: Original file size.
-            X-File-Mime-Type: MINE type of file.
+            X-File-MimeType: MINE type of file.
 
         Reference: django_chunk_file_upload/static/js/upload.chunk.js
 
@@ -299,10 +299,10 @@ class BaseFile:
                 fp.write(chunk)
 
     def optimize(self, instance):
-        optimizer = MapOptimizer.get(self.type, None)
-        if optimizer and isinstance(optimizer, type):
-            optimizer = optimizer(instance, self)
-            optimizer.optimize()
+        optimizer_class = MapOptimizer.get(self.type, None)
+        if optimizer_class and isinstance(optimizer_class, type):
+            optimizer = optimizer_class(instance, self)
+            optimizer.run()
 
 
 @dataclass(kw_only=True)

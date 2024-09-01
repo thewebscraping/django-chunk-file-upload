@@ -8,7 +8,7 @@ Features
 ----------
 - Multiple file uploads.
 - Drag and Drop UI.
-- MD5 checksum file.
+- MD5 checksum file: check, validate, handle duplicate files.
 - Chunked uploads: optimizing large file transfers.
 - Prevent uploading existing files with MD5 checksum.
 - Easy to use any models.
@@ -57,27 +57,26 @@ Change default config: `settings.py`
 
 ```python
 DJANGO_CHUNK_FILE_UPLOAD = {
-    "chunk_size": 1024 * 1024 * 2,  # # custom chunk size upload (default: 2MB).
-    "upload_to": "custom_folder/%Y/%m/%d",  # custom upload folder.
-    "is_metadata_storage": True,  # save file metadata,
+    "chunk_size": 1024 * 1024 * 2,  # # Custom chunk size upload (default: 2MB).
+    "upload_to": "uploads/%Y/%m/%d",  # Custom upload folder.
+    "is_metadata_storage": True,  # Save file metadata,
     "remove_file_on_update": True,
     "optimize": True,
-    "js": (
-        "https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js",
-        "https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js",
-        "https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js",
-    ),  # use cdn.
-    "css": (
-        "custom.css"
-     ),  # custom css path.
     "image_optimizer": {
         "quality": 82,
         "compress_level": 9,
         "max_width": 1024,
         "max_height": 720,
-        "to_webp": True,  # focus convert image to webp type.
+        "to_webp": True,  # Force convert image to webp type.
+        "remove_origin": True,  # Force to delete original image after optimization.
     },
-    "permission_classes": ("django_chunk_file_upload.permissions.AllowAny",)  # default: IsAuthenticated
+    "permission_classes": ("django_chunk_file_upload.permissions.AllowAny",),  # default: IsAuthenticated
+    # "js": (
+    #     "https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js",
+    #     "https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js",
+    #     "https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js",
+    # ),  # custom js, use cdn.
+    # "css": ("custom.css",),  # custom your css path.
 }
 
 ```
@@ -129,13 +128,13 @@ class CustomChunkedUploadView(ChunkedUploadView):
     form_class = YourForm
     permission_classes = (IsAuthenticated,)
 
-    # file_class = File  # file class
+    # file_class = File  # File handle class
     # file_status = app_settings.status  # default: PENDING (Used when using background task, you can change it to COMPLETED.)
     # optimize = True  # default: True
-    # remove_file_on_update = True  # update image on admin page.
-    # chunk_size = 1024 * 1024 * 2  # custom chunk size upload (default: 2MB).
-    # upload_to = "custom_folder/%Y/%m/%d"  # custom upload folder.
-    # template_name = "custom_template.html"  # custom template
+    # remove_file_on_update = True  # Update image on admin page.
+    # chunk_size = 1024 * 1024 * 2  # Custom chunk size upload (default: 2MB).
+    # upload_to = "custom_folder/%Y/%m/%d"  # Custom upload folder.
+    # template_name = "custom_template.html"  # Custom template
 
     # # Run background task like celery when upload is complete
     # def background_task(self, instance):
@@ -189,4 +188,33 @@ from django_chunk_file_upload.typed import (
 )
 ```
 
-This package is under development, only supports create view. There are also no features related to image optimization. Use at your own risk.
+### Image Optimizer
+Use image Optimizer feature for other modules
+
+```python
+from django_chunk_file_upload.optimize import ImageOptimizer
+from django_chunk_file_upload.app_settings import app_settings
+
+# Image optimize method: resize, crop, delete, convert and optimize
+# This method calls two other methods:
+#   ImageOptimizer.resize: resize image
+#   ImageOptimizer.crop: example get parameters from Cropperjs (https://github.com/fengyuanchen/cropperjs).
+image, path = ImageOptimizer.optimize(
+    fp='path/image.png',
+    filename=None,  # Rename the original file.
+    upload_to=None,  # Upload dir.
+    box=None,  # The crop rectangle, as a (left, upper, right, lower)-tuple to crop the image.
+    max_width =app_settings.image_optimizer.max_width,  # Max width of the image to resize.
+    max_height=app_settings.image_optimizer.max_height,  # Max height of the image to resize.
+    to_webp=True,  # Force convert image to webp type.
+    remove_origin =app_settings.image_optimizer.remove_origin,  # Force to delete original image after optimization.
+)
+```
+
+### UnitTests
+
+```shell
+python runtests.py
+```
+
+Note: This package is under development, only supports create view. There are also no features related to image optimization. Use at your own risk.
