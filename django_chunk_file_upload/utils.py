@@ -112,7 +112,9 @@ def handle_upload_file(file, upload_dir: str = None):
 
 
 def get_md5_checksum(
-    fp: Union[str, bytes, BytesIO, InMemoryUploadedFile, TemporaryUploadedFile],
+    fp: Union[
+        str, bytes, BytesIO, BufferedReader, InMemoryUploadedFile, TemporaryUploadedFile
+    ],
     chunk_size: int = 65536,
 ) -> str:
     md5hash = hashlib.md5()

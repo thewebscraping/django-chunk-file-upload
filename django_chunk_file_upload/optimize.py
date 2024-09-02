@@ -68,7 +68,19 @@ class BaseOptimizer:
                 fp.close()
 
     @classmethod
-    def checksum(cls, fp: str | bytes | InMemoryUploadedFile | TemporaryUploadedFile):
+    def checksum(
+        cls,
+        fp: (
+            str
+            | bytes
+            | InMemoryUploadedFile
+            | TemporaryUploadedFile
+            | FieldFile
+            | ImageFieldFile
+        ),
+    ):
+        if isinstance(fp, (FieldFile, ImageFieldFile)):
+            return get_md5_checksum(fp)
         return get_md5_checksum(fp)
 
     @classmethod
