@@ -26,7 +26,10 @@ from .typed import (
     SeparatedFile,
     XMLFile,
 )
-from .utils import get_md5_checksum
+from .utils import get_logger, get_md5_checksum
+
+
+LOGGER = get_logger(__name__)
 
 
 class ChunkedUploadView(FormView):
@@ -74,13 +77,14 @@ class ChunkedUploadView(FormView):
         opts = dict(
             user=self.request.user if self.request.user.is_authenticated else None
         )
-        pk = self.request.headers.get("x-file-id")
-        if pk:
-            opts["pk"] = pk
-            return self.get_model().objects.filter(**opts).first()
+        checksum = self.request.headers.get("x-file-id")
+        if not checksum and self.request.headers.get("x-file-checksum"):
+            checksum = self.request.headers["x-file-checksum"]
 
-        if self.request.headers.get("x-file-checksum"):
-            opts["checksum"] = self.request.headers["x-file-checksum"]
+        if checksum:
+            opts["checksum"] = checksum
+            if self.request.user.is_superuser:
+                opts.pop("user")
             return self.get_model().objects.filter(**opts).first()
 
     def get_context_data(self, **kwargs):
@@ -101,7 +105,6 @@ class ChunkedUploadView(FormView):
 
     def delete(self, request, *args, **kwargs):
         """Override DELETE method from View."""
-
         return self._delete(request, *args, **kwargs)
 
     def _get(self, request, *args, **kwargs):
@@ -115,7 +118,7 @@ class ChunkedUploadView(FormView):
             instance = self.get_instance()
             return self.chunked_upload(instance, form, file_obj)
 
-        file_obj.message = _("Permission denied.")
+        file_obj.message = _("Cannot create file, reason: permission denied.")
         return self.ajax_response(None, file_obj, status=400, save=False)
 
     def _update(self, request, *args, **kwargs):
@@ -123,31 +126,41 @@ class ChunkedUploadView(FormView):
         if self.has_change_permission(self.request) and self.is_valid(form, file_obj):
             instance = self.get_instance()
             if instance:
-                if self.remove_file_on_update:
+                if self.remove_file_on_update and not instance.metadata.get(
+                    "_remove_file_on_update"
+                ):
+                    LOGGER.info(
+                        "File update request received. File: %s", instance.file.name
+                    )
+                    LOGGER.info("Delete original file: %s", instance.file.name)
+                    instance.metadata["_remove_file_on_update"] = True
                     instance.file.delete()
+
                 instance.eof = False
-                instance.save()
                 return self.chunked_upload(instance, form, file_obj)
 
             file_obj.message = _("Not found.")
             return self.ajax_response(None, file_obj, status=400, save=False)
 
-        file_obj.message = _("Permission denied.")
+        file_obj.message = _("Cannot update file, reason: permission denied.")
         return self.ajax_response(None, file_obj, status=400, save=False)
 
     def _delete(self, request, *args, **kwargs):
+        LOGGER.info("File deletion request received.")
         form, file_obj = self._get_form_file(request, *args, **kwargs)
         if self.has_delete_permission(request):
             instance = self.get_instance()
             if instance and (
                 self.request.user.is_superuser or self.request.user == instance.user
             ):
+                file_obj.message = _(
+                    "Deleted successfully. File: %s" % instance.file.name
+                )
                 instance.file.delete()
                 instance.delete()
-                file_obj.message = _("The file deleted successfully.")
                 return self.ajax_response(None, file_obj, status=200, save=False)
 
-        file_obj.message = _("Permission denied.")
+        file_obj.message = _("Cannot delete file, reason: permission denied.")
         return self.ajax_response(None, file_obj, status=400, save=False)
 
     def _get_form_file(
@@ -171,9 +184,12 @@ class ChunkedUploadView(FormView):
         Returns:
             JsonResponse: return file metadata data.
         """
+
         if not instance:
+            LOGGER.info("File update request received. File: %s", file_obj.name)
             instance = form.instance
 
+        LOGGER.info("Proceed to chunk upload. File: %s", file_obj.name)
         if instance.eof:
             file_obj.message = _("The file already exists.")
             return self.ajax_response(instance, file_obj, 403, save=False)
@@ -196,11 +212,14 @@ class ChunkedUploadView(FormView):
             return self.ajax_response(instance, file_obj)
 
         checksum = get_md5_checksum(file_obj.save_path)
+        instance.metadata = {}
         if checksum != file_obj.checksum:
             instance.file.delete()
             instance.eof = False
-            file_obj.message = _("The file does not match the MD5 checksum.")
-            return self.ajax_response(instance, file_obj, 400)
+            instance.file = None
+            instance.save()
+            file_obj.message = _("MD5 checksum does not match, please try again.")
+            return self.ajax_response(instance, file_obj, 400, save=False)
 
         self.background_task(instance)
         if self.optimize:
@@ -235,6 +254,7 @@ class ChunkedUploadView(FormView):
         if instance and instance.eof:
             data["url"] = instance.file.url
 
+        LOGGER.info(str(file_obj.message))
         return JsonResponse(
             data=data,
             status=status,

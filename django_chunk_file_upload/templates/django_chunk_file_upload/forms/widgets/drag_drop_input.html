@@ -37,10 +37,7 @@
             </div>
         </div>
         <div class="dropzone-preview">
-            <input type="{{ widget.type }}"
-                   name="{{ widget.name }}"
-                   {% if widget.value != None %}value="{{ widget.value|stringformat:'s' }}"{% endif %}
-                   {% include "django/forms/widgets/attrs.html" %}>
+            <input type="{{ widget.type }}" name="{{ widget.name }}" {% if widget.value != None %}value="{{ widget.value|stringformat:'s' }}"{% endif %} {% for name, value in widget.attrs.items %}{% if value is not False %} {{ name }}{% if value is not True %}="{{ value|stringformat:'s' }}"{% endif %}{% endif %}{% endfor %}>
             <div class="preview">
                 <div class="add-files">
                     <button type="button" class="btn btn-success btn-add-file">

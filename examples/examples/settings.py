@@ -140,17 +140,5 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Django Chunk File Upload
 DJANGO_CHUNK_FILE_UPLOAD = {
-    "chunk_size": 1024 * 1024 * 2,  # # custom chunk size upload (default: 2MB).
-    "upload_to": "custom_folder/%Y/%m/%d",  # custom upload folder.
-    "is_metadata_storage": True,  # save file metadata,
-    "remove_file_on_update": True,
-    "optimize": True,
-    "image_optimizer": {
-        "quality": 82,
-        "compress_level": 9,
-        "max_width": 1280,
-        "max_height": 720,
-        "to_webp": True,  # focus convert image to webp type.
-    },
     "permission_classes": ("django_chunk_file_upload.permissions.AllowAny",),
 }

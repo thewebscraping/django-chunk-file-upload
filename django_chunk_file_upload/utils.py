@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 from io import BufferedReader, BytesIO
@@ -13,11 +14,23 @@ from django.core.files.uploadedfile import (
     InMemoryUploadedFile,
     TemporaryUploadedFile,
 )
+from django.db.models.fields.files import FieldFile, ImageFieldFile
 from django.utils import timezone
+
+
+FORMAT = "%(levelname)s:%(asctime)s:%(name)s:%(funcName)s:%(lineno)d >>> %(message)s"
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def _attr_to_str(*args, **kwargs) -> str:
     return ":".join([str(arg) for arg in args] + [json.dumps(kwargs, default=str)])
+
+
+def get_logger(name: str = __name__, level: int | str = logging.INFO) -> logging.Logger:
+    logging.basicConfig(format=FORMAT, datefmt=DATE_FORMAT, level=level)
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    return logger
 
 
 def make_md5_hash(*args, **kwargs) -> str:
@@ -113,24 +126,34 @@ def handle_upload_file(file, upload_dir: str = None):
 
 def get_md5_checksum(
     fp: Union[
-        str, bytes, BytesIO, BufferedReader, InMemoryUploadedFile, TemporaryUploadedFile
+        str,
+        bytes,
+        BytesIO,
+        BufferedReader,
+        InMemoryUploadedFile,
+        TemporaryUploadedFile,
+        FieldFile,
+        ImageFieldFile,
     ],
     chunk_size: int = 65536,
+    closed: bool = True,
 ) -> str:
     md5hash = hashlib.md5()
-    if isinstance(fp, str):
-        with open(fp, "rb") as fp:
-            while chunk := fp.read(chunk_size):
-                md5hash.update(chunk)
-    elif isinstance(fp, (InMemoryUploadedFile, TemporaryUploadedFile)):
+    if isinstance(fp, (InMemoryUploadedFile, TemporaryUploadedFile)):
         for chunk in fp.chunks(chunk_size):
             md5hash.update(chunk)
-    elif isinstance(fp, BufferedReader):
+    else:
+        if isinstance(fp, str):
+            fp = open(fp, "rb")
+        elif isinstance(fp, (FieldFile, ImageFieldFile)):
+            fp = fp.file.file
+        elif isinstance(fp, bytes):
+            fp = BytesIO(fp)
+
         while chunk := fp.read(chunk_size):
             md5hash.update(chunk)
-    else:
-        fp = BytesIO(fp) if isinstance(fp, bytes) else fp
-        with open(fp) as f:
-            while chunk := f.read(chunk_size):
-                md5hash.update(chunk)
+
+        if closed and not fp.closed:
+            fp.close()
+
     return md5hash.hexdigest()

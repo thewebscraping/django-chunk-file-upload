@@ -192,7 +192,7 @@ class BaseFile:
     @property
     def message(self) -> str:
         if self._message is None:
-            self._message = _("Uploading file, please wait a moment.")
+            self._message = _("Uploading file in progress, please wait a moment.")
             if self.eof:
                 self._message = _("File upload is completed.")
         return self._message
