@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from django import forms
-from django.db.models.fields.files import FieldFile, ImageField
 
 from .app_settings import app_settings
 
@@ -14,8 +13,9 @@ class DragDropFileInput(forms.ClearableFileInput):
         context["widget"]["attrs"]["required"] = False
         context["widget"]["attrs"]["hidden"] = True
         context["widget"]["attrs"]["data-id"] = "dropzone"
-        if value and isinstance(value, (FieldFile, ImageField)):
-            context["widget"]["attrs"]["data-value"] = value.instance.pk
+        instance = getattr(value, "instance", None)
+        if instance:
+            context["widget"]["attrs"]["data-value"] = instance.checksum
         return context
 
     @property
