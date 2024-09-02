@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 from io import BufferedReader, BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 from uuid import UUID
 
-from django.core.files.uploadedfile import (
-    InMemoryUploadedFile,
-    TemporaryUploadedFile,
-)
 from django.db.models.fields.files import FieldFile, ImageFieldFile
 
 from PIL import Image, UnidentifiedImageError
@@ -17,12 +13,18 @@ from PIL.WebPImagePlugin import WebPImageFile
 
 from .app_settings import app_settings
 from .constants import TypeChoices
-from .utils import get_md5_checksum, get_paths, safe_remove_file
+from .utils import get_logger, get_md5_checksum, get_paths, safe_remove_file
 
 
 if TYPE_CHECKING:
     from .models import FileManager
     from .typed import File
+
+LOGGER = get_logger(__name__)
+
+_File = Union[str | bytes | BytesIO | BufferedReader | FieldFile | ImageFieldFile]
+_Image = Union[JpegImageFile, PngImageFile, WebPImageFile]
+_ImageFile = Union[_File, _Image]
 
 
 class BaseOptimizer:
@@ -41,38 +43,38 @@ class BaseOptimizer:
         return self._file
 
     @classmethod
-    def open(
-        cls, fp: str | bytes | BytesIO | BufferedReader | FieldFile | ImageFieldFile
-    ) -> None | BufferedReader | BytesIO:
+    def open(cls, fp: _File) -> None | BufferedReader | BytesIO:
         return cls._open(fp)
 
     @classmethod
-    def _open(
-        cls, fp: str | bytes | BytesIO | BufferedReader | FieldFile | ImageFieldFile
-    ) -> None | BufferedReader | BytesIO:
-        if isinstance(fp, str):
-            return open(fp, "rb")
-        if isinstance(fp, bytes):
-            fp = BytesIO(fp)
-        if isinstance(fp, (BytesIO, BufferedReader)):
-            return fp
-        if isinstance(fp, (FieldFile, ImageFieldFile)):
+    def _open(cls, fp: _File) -> None | BufferedReader | BytesIO:
+        if isinstance(fp, _File):
+            if isinstance(fp, str):
+                return open(fp, "rb")
+            if isinstance(fp, bytes):
+                fp = BytesIO(fp)
+            if isinstance(fp, (BytesIO, BufferedReader)):
+                return fp
             return fp.file.file
 
     @classmethod
-    def close(cls, fp: BufferedReader | BytesIO | FieldFile | ImageFieldFile) -> None:
+    def close(cls, fp: _File) -> None:
         if isinstance(fp, (FieldFile, ImageFieldFile)):
             fp.close()
         else:
-            if fp and bool(getattr(fp, "closed", None) is False):
+            if (
+                fp
+                and getattr(fp, "close", None)
+                and bool(getattr(fp, "closed", None) is False)
+            ):
                 fp.close()
 
     @classmethod
-    def checksum(cls, fp: str | bytes | InMemoryUploadedFile | TemporaryUploadedFile):
+    def checksum(cls, fp: _File):
         return get_md5_checksum(fp)
 
     @classmethod
-    def get_identifier(cls, fp: str | bytes) -> UUID:
+    def get_identifier(cls, fp: _File) -> UUID:
         return UUID(hex=cls.checksum(fp))
 
     def run(self):
@@ -99,19 +101,18 @@ class ImageOptimizer(BaseOptimizer):
         self.close(image)
 
     @classmethod
-    def open(
-        cls, fp: str | bytes | BytesIO | BufferedReader | FieldFile | ImageFieldFile
-    ) -> None | Image.Image:
+    def open(cls, fp: _File) -> None | Image.Image:
         try:
+            if isinstance(fp, _Image):
+                return fp
+
             image = Image.open(cls._open(fp))
             return image
         except (UnidentifiedImageError, FileNotFoundError):
             pass
 
     @classmethod
-    def close(
-        cls, fp: BufferedReader | BytesIO | Image.Image | FieldFile | ImageFieldFile
-    ) -> None:
+    def close(cls, fp: _ImageFile) -> None:
         if isinstance(fp, (Image.Image, FieldFile, ImageFieldFile)):
             fp.close()
         else:
@@ -120,7 +121,7 @@ class ImageOptimizer(BaseOptimizer):
     @classmethod
     def optimize(
         cls,
-        fp: str | bytes | BytesIO | BufferedReader | FieldFile | ImageFieldFile,
+        fp: _ImageFile,
         *,
         filename: str = None,
         upload_to: str = None,
@@ -129,7 +130,7 @@ class ImageOptimizer(BaseOptimizer):
         max_height: int = app_settings.image_optimizer.max_height,
         to_webp: bool = app_settings.image_optimizer.to_webp,
         remove_origin: bool = app_settings.image_optimizer.remove_origin,
-    ) -> tuple[Image.Image, str]:
+    ) -> tuple[_Image, str]:
         """Optimize the Image File
 
         Args:
@@ -146,10 +147,10 @@ class ImageOptimizer(BaseOptimizer):
           The Tuple: PIL Image, Image file path location. If the file is not in the correct format, a tuple with the value (None, None) can be returned.
         """
 
-        image = cls.open(fp)
-        path = None
-        if not isinstance(image, Image.Image):
-            return
+        image, path = cls.open(fp), None
+        if not image:
+            LOGGER.error("Image format not supported.")
+            return image, path
 
         fm, ext = None, None
         if isinstance(image, PngImageFile):
@@ -166,8 +167,11 @@ class ImageOptimizer(BaseOptimizer):
         if str(ext) in cls._supported_file_types:
             image = cls.crop(image, box=box)
             image = cls.resize(image, max_width, max_height)
+            image.info = {}
             if not filename and not isinstance(filename, str):
-                filename = str(cls.get_identifier(fp))
+                filename = str(
+                    cls.get_identifier(fp.filename if isinstance(fp, _Image) else fp)
+                )
 
             filename = filename + ext
             save_path, path = get_paths(filename, upload_to=upload_to)
@@ -180,8 +184,10 @@ class ImageOptimizer(BaseOptimizer):
             )
 
             if remove_origin:
+                LOGGER.info("Proceed to delete the original image file.")
                 if isinstance(fp, (FieldFile, ImageFieldFile)):
-                    fp.delete(save=False)
+                    if filename not in fp.name:
+                        fp.delete(save=False)
                 else:
                     origin_fp = (
                         getattr(fp, "name", None)
@@ -194,12 +200,12 @@ class ImageOptimizer(BaseOptimizer):
                         and path not in origin_fp
                     ):
                         safe_remove_file(origin_fp)
+        else:
+            LOGGER.error("Image format not supported.")
         return image, path
 
     @classmethod
-    def crop(
-        cls, image: Image.Image, box: tuple[int, int, int, int] = None
-    ) -> Image.Image:
+    def crop(cls, image: _Image, box: tuple[int, int, int, int] = None) -> _Image:
         """Crop an image
 
         Args:
@@ -209,6 +215,8 @@ class ImageOptimizer(BaseOptimizer):
         Returns:
           Returns a rectangular region from this PIL image.
         """
+        LOGGER.info("Proceed to crop image.")
+
         if image and box is not None:
             return image.crop(box)
         return image
@@ -216,10 +224,10 @@ class ImageOptimizer(BaseOptimizer):
     @classmethod
     def resize(
         cls,
-        image: Image.Image,
+        image: _Image,
         width: int = app_settings.image_optimizer.max_width,
         height: int = app_settings.image_optimizer.max_height,
-    ) -> Image.Image:
+    ) -> _Image:
         """Resize image to fit with Width and Height
 
         Args:
@@ -230,6 +238,7 @@ class ImageOptimizer(BaseOptimizer):
         Returns:
           PIL image after resizing
         """
+        LOGGER.info("Proceed to reduce image size")
 
         w, h = image.size
         aspect_ratio = w / h

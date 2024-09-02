@@ -19,3 +19,9 @@ class FileManagerModelAdmin(admin.ModelAdmin):
 
     add_form_template = "django_chunk_file_upload/admin/add_form.html"
     change_form_template = "django_chunk_file_upload/admin/change_form.html"
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            obj.file.delete(save=False)
+
+        queryset.delete()
