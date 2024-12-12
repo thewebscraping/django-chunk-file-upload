@@ -24,7 +24,7 @@ LOGGER = get_logger(__name__)
 
 _File = Union[str, bytes, BytesIO, BufferedReader, FieldFile, ImageFieldFile]
 _OpenFile = Union[BinaryIO, BytesIO, BufferedReader, Any]
-_Image = Union[ImageFile, JpegImageFile, PngImageFile, WebPImageFile]
+_Image = Union[ImageFile.ImageFile, JpegImageFile, PngImageFile, WebPImageFile]
 _ImageFile = Union[_File, _Image]
 
 
@@ -210,7 +210,7 @@ class ImageOptimizer(BaseOptimizer):
         return image, path
 
     @classmethod
-    def crop(cls, image: _Image, box: tuple[int, int, int, int] = None) -> _Image:
+    def crop(cls, image: _Image, box: tuple[int, int, int, int] = None) -> Image:
         """Crop an image
 
         Args:
@@ -232,7 +232,7 @@ class ImageOptimizer(BaseOptimizer):
         image: _Image,
         width: int = app_settings.image_optimizer.max_width,
         height: int = app_settings.image_optimizer.max_height,
-    ) -> _Image:
+    ) -> Image:
         """Resize image to fit with Width and Height
 
         Args:
