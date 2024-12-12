@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from io import BufferedReader, BytesIO
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, BinaryIO, Optional, Union
 from uuid import UUID
 
 from django.db.models.fields.files import FieldFile, ImageFieldFile
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageFile, UnidentifiedImageError
 from PIL.JpegImagePlugin import JpegImageFile
 from PIL.PngImagePlugin import PngImageFile
 from PIL.WebPImagePlugin import WebPImageFile
@@ -22,8 +22,9 @@ if TYPE_CHECKING:
 
 LOGGER = get_logger(__name__)
 
-_File = Union[str | bytes | BytesIO | BufferedReader | FieldFile | ImageFieldFile]
-_Image = Union[JpegImageFile, PngImageFile, WebPImageFile]
+_File = Union[str, bytes, BytesIO, BufferedReader, FieldFile, ImageFieldFile]
+_OpenFile = Union[BinaryIO, BytesIO, BufferedReader, Any]
+_Image = Union[ImageFile, JpegImageFile, PngImageFile, WebPImageFile]
 _ImageFile = Union[_File, _Image]
 
 
@@ -47,7 +48,7 @@ class BaseOptimizer:
         return cls._open(fp)
 
     @classmethod
-    def _open(cls, fp: _File) -> None | BufferedReader | BytesIO:
+    def _open(cls, fp: _File) -> _OpenFile:
         if isinstance(fp, _File):
             if isinstance(fp, str):
                 return open(fp, "rb")
@@ -101,7 +102,7 @@ class ImageOptimizer(BaseOptimizer):
         self.close(image)
 
     @classmethod
-    def open(cls, fp: _File) -> None | Image.Image:
+    def open(cls, fp: _File) -> _Image:
         try:
             if isinstance(fp, _Image):
                 return fp
@@ -130,7 +131,9 @@ class ImageOptimizer(BaseOptimizer):
         max_height: int = app_settings.image_optimizer.max_height,
         to_webp: bool = app_settings.image_optimizer.to_webp,
         remove_origin: bool = app_settings.image_optimizer.remove_origin,
-    ) -> tuple[_Image, str]:
+        quality: int = app_settings.image_optimizer.quality,
+        compress_level: int = app_settings.image_optimizer.compress_level,
+    ) -> tuple[Optional[_Image], Optional[str]]:
         """Optimize the Image File
 
         Args:
@@ -142,6 +145,8 @@ class ImageOptimizer(BaseOptimizer):
           max_height: Max height of the image to resize.
           to_webp: Force convert image to webp type.
           remove_origin: Force to delete original image after optimization.
+          quality: Quality of image.
+          compress_level: Compress level to optimize (from 1 - 9).
 
         Returns:
           The Tuple: PIL Image, Image file path location. If the file is not in the correct format, a tuple with the value (None, None) can be returned.
@@ -173,14 +178,14 @@ class ImageOptimizer(BaseOptimizer):
                     cls.get_identifier(fp.filename if isinstance(fp, _Image) else fp)
                 )
 
-            filename = filename + ext
+            filename += ext
             save_path, path = get_paths(filename, upload_to=upload_to)
             image.save(
                 save_path,
                 fm,
                 optimize=True,
-                quality=app_settings.image_optimizer.quality,
-                compress_level=app_settings.image_optimizer.compress_level,
+                quality=quality,
+                compress_level=compress_level,
             )
 
             if remove_origin:
