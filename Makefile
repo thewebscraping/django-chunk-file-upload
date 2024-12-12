@@ -14,11 +14,11 @@ publish-test-pypi:
 	python -m pip install 'twine>=6.0.1'
 	python setup.py sdist bdist_wheel
 	twine upload --repository testpypi dist/*
-	rm -rf build dist .egg wrapper_tls_requests.egg-info
+	rm -rf build dist .egg django_chunk_file_upload.egg-info
 
 publish-pypi:
 	python -m pip install -r requirements.txt
 	python -m pip install 'twine>=6.0.1'
 	python setup.py sdist bdist_wheel
 	twine upload dist/*
-	rm -rf build dist .egg wrapper_tls_requests.egg-info
+	rm -rf build dist .egg django_chunk_file_upload.egg-info
