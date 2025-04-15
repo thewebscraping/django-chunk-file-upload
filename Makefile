@@ -11,6 +11,7 @@ lint:
 
 publish-test-pypi:
 	python -m pip install -r requirements.txt
+	python -m pip install wheel
 	python -m pip install 'twine>=6.0.1'
 	python setup.py sdist bdist_wheel
 	twine upload --repository testpypi dist/*
@@ -18,6 +19,7 @@ publish-test-pypi:
 
 publish-pypi:
 	python -m pip install -r requirements.txt
+	python -m pip install wheel
 	python -m pip install 'twine>=6.0.1'
 	python setup.py sdist bdist_wheel
 	twine upload dist/*
